@@ -1,0 +1,4 @@
+Pandas
+Numpy
+Openpyxl
+streamlit==1.54.0
