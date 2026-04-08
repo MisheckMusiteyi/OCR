@@ -339,7 +339,7 @@ if uploaded_file is not None:
             file_name = "Outstanding_Reserve.xlsx"
 
         st.download_button(
-            label="📥 Download Excel Report",
+            label="Download Excel Report",
             data=output,
             file_name=file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
