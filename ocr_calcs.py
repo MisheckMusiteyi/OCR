@@ -387,7 +387,7 @@ if uploaded_file is not None:
                     conversion_issues.append(f"Column '{col}': {failed_count} non-numeric values (e.g., {problematic_values})")
         
         if conversion_issues:
-            st.info("ℹ️ Converting non-numeric values to numbers:")
+            st.info("Converting non-numeric values to numbers:")
             for issue in conversion_issues:
                 st.write(f"  • {issue}")
             # Perform conversion
@@ -401,12 +401,12 @@ if uploaded_file is not None:
         # -----------------------------------------------------------------
         # SUMMARY
         # -----------------------------------------------------------------
-        st.markdown("#### 📋 Data Quality Summary")
+        st.markdown("#### Data Quality Summary")
         
         rows_removed = df_original_len - len(df)
         if rows_removed > 0 or conversion_issues:
             st.markdown('<div class="data-check-warning">', unsafe_allow_html=True)
-            st.markdown("**⚠️ Data adjustments applied:**")
+            st.markdown("**Data adjustments applied:**")
             if rows_removed > 0:
                 st.write(f"• Removed {rows_removed} duplicate row(s)")
             if conversion_issues:
@@ -415,7 +415,7 @@ if uploaded_file is not None:
         else:
             st.markdown('<div class="data-check-container">', unsafe_allow_html=True)
             st.markdown("**✅ All data quality checks passed!**")
-            st.markdown('</div>')
+            
         
         st.markdown("---")
         
