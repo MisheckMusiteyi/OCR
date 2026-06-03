@@ -3,6 +3,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 from io import BytesIO
+import re
 
 st.set_page_config(page_title="Outstanding Claims Reserve (OCR) Calculator", layout="wide")
 
@@ -75,30 +76,20 @@ st.markdown("""
         padding: 0 2rem;
     }
     
-    /* Required Column Containers */
-    .required-container {
+    /* Grouping Columns Container */
+    .grouping-container {
         background-color: #F9F9F9;
         border: 2px solid #D4AF37;
         border-radius: 10px;
         padding: 1rem;
-        text-align: center;
-        min-height: 120px;
-        height: auto;
-        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        width: 100%;
+        margin-bottom: 1rem;
     }
-    .required-container h3 {
+    .grouping-container h3 {
         color: #D4AF37;
         margin-top: 0;
         margin-bottom: 0.5rem;
         font-size: 1.2rem;
         font-weight: bold;
-    }
-    .required-container p {
-        color: #666666;
-        font-size: 0.85rem;
-        margin-bottom: 0;
-        line-height: 1.3;
     }
     
     /* Cards */
@@ -167,6 +158,29 @@ st.markdown("""
         overflow: hidden;
     }
     
+    /* Data Check Containers */
+    .data-check-container {
+        background-color: #E3F2FD;
+        border: 2px solid #2196F3;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .data-check-warning {
+        background-color: #FFF3E0;
+        border: 2px solid #FF9800;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    .data-check-error {
+        background-color: #FFEBEE;
+        border: 2px solid #F44336;
+        border-radius: 10px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+    }
+    
     /* Fix for select box container */
     .stSelectbox div[data-baseweb="select"] {
         width: 100%;
@@ -190,7 +204,7 @@ st.markdown("""
 st.markdown("""
 <div class="hero">
     <h1>Outstanding Claims Reserve (OCR) Calculator</h1>
-    <p>Upload your CSV or Excel file. Map your columns to the required fields below. The app groups by Line of Business and sums the selected numeric columns to produce a downloadable Outstanding Claims Reserve report.</p>
+    <p>Upload your CSV or Excel file. Select grouping columns and numeric columns. The app calculates outstanding reserves grouped by your selected columns.</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -198,13 +212,20 @@ st.markdown("""
 st.markdown('<div class="main-container">', unsafe_allow_html=True)
 
 # Client name input
-client_name = st.text_input("Client Name (for file name)", value="Client").strip()
+col1, col2 = st.columns(2)
+with col1:
+    client_name = st.text_input("Client Name (for file name)", value="Client").strip()
+with col2:
+    pass
 
-# File uploader (now accepts CSV and Excel)
+# File uploader
 uploaded_file = st.file_uploader("Choose a file", type=["csv", "xlsx", "xls"])
 
 if uploaded_file is not None:
     try:
+        original_filename = uploaded_file.name
+        base_filename = re.sub(r'\.[^.]*$', '', original_filename)
+
         # Read file based on extension
         file_extension = uploaded_file.name.split('.')[-1].lower()
         
@@ -229,48 +250,38 @@ if uploaded_file is not None:
         st.dataframe(df.head())
         st.markdown("---")
 
-        # --- Column Mapping Section ---
-        st.markdown("### Map Your Columns to Required Fields")
-        st.markdown("The calculator requires a 'Line of Business' column. Select the column in your data that identifies the line of business:")
-
         # Get all column names for selection
         all_columns = df.columns.tolist()
         
-        # Create a single container for Line of Business mapping
-        col1, col2, col3 = st.columns([1, 2, 1])
+        # --- Grouping Columns Selection ---
+        st.markdown("""
+        <div class="grouping-container">
+            <h3>📊 Grouping Columns</h3>
+            <p>Select the columns you want to group by (e.g., Line_of_Business, Region, Product Type). Results will be aggregated by these columns.</p>
+        </div>
+        """, unsafe_allow_html=True)
         
-        with col2:
-            st.markdown("""
-            <div class="required-container">
-                <h3>Line_of_Business</h3>
-                <p>The category/segment for grouping results (e.g., Motor, Property, Health)</p>
-            </div>
-            """, unsafe_allow_html=True)
-            lob_col = st.selectbox(
-                "Select your Line of Business column",
-                options=[""] + all_columns,
-                key="lob",
-                label_visibility="collapsed"
-            )
-            if lob_col == "":
-                lob_col = None
+        grouping_cols = st.multiselect(
+            "Choose columns to group by (at least one required):",
+            options=all_columns,
+            default=[all_columns[0]] if all_columns else [],
+            help="Select one or more columns. The OCR results will be aggregated by these columns."
+        )
+        
+        if not grouping_cols:
+            st.error("Please select at least one grouping column.")
+            st.stop()
 
         st.markdown("---")
 
-        # Validate Line of Business mapping
-        if not lob_col:
-            st.error("Please map the Line of Business column.")
-            st.stop()
-
         # Numeric columns selection
         st.markdown("### Select Numeric Columns for OCR Calculation")
-        st.markdown("Select which numeric columns (claim amounts, reserves, etc.) you want to sum by Line of Business:")
+        st.markdown("Select which numeric columns (claim amounts, reserves, etc.) you want to sum by the selected grouping columns:")
         
         numeric_columns = df.select_dtypes(include=[np.number]).columns.tolist()
         
-        # Remove the mapped Line of Business column if it appears in numeric columns
-        if lob_col in numeric_columns:
-            numeric_columns.remove(lob_col)
+        # Remove grouping columns from numeric selection if they appear
+        numeric_columns = [col for col in numeric_columns if col not in grouping_cols]
         
         if not numeric_columns:
             st.error("No numeric columns found in your data. Please ensure your file contains numeric columns for OCR calculation.")
@@ -287,74 +298,188 @@ if uploaded_file is not None:
             st.warning("Please select at least one numeric column for OCR calculation.")
             st.stop()
 
-        # Show mapping summary button
-        if st.button("View Column Mapping Summary", use_container_width=False):
-            mapping_data = {
-                'Required Field': ['Line_of_Business'],
-                'Your Column': [lob_col],
-                'Description': ['Category for grouping results']
-            }
-            mapping_df = pd.DataFrame(mapping_data)
-            st.dataframe(mapping_df, use_container_width=True)
+        # ============================================================
+        # DATA QUALITY CHECKS
+        # ============================================================
+        st.markdown("### Data Quality Checks")
+        
+        all_selected_cols = grouping_cols + selected_value_cols
+        df_original_len = len(df)
+        
+        # -----------------------------------------------------------------
+        # 1. MISSING VALUES CHECK (CRITICAL - STOPS CALCULATION)
+        # -----------------------------------------------------------------
+        st.markdown("#### 1. Missing Values Check")
+        
+        missing_summary = {}
+        missing_in_selected = False
+        
+        for col in all_selected_cols:
+            if col in df.columns:
+                missing_count = df[col].isna().sum()
+                missing_summary[col] = missing_count
+                if missing_count > 0:
+                    missing_in_selected = True
+        
+        missing_df = pd.DataFrame(list(missing_summary.items()), columns=['Column', 'Missing Values'])
+        st.dataframe(missing_df, use_container_width=True)
+        
+        if missing_in_selected:
+            st.markdown("""
+            <div class="data-check-error">
+                <b>❌ CRITICAL ERROR: Missing values found in selected columns.</b><br>
+                Please fix the missing values in your data and re-upload the file.<br>
+                Calculation cannot proceed with missing values.
+            </div>
+            """, unsafe_allow_html=True)
             
-            if selected_value_cols:
-                st.markdown("**Selected numeric columns for OCR calculation:**")
-                st.write(selected_value_cols)
-
-        # --- Rename columns for internal processing ---
-        df_processed = df.rename(columns={
-            lob_col: 'Line_Of_Business'
-        })
-
-        # Keep original numeric column names
-        original_value_cols = selected_value_cols
-
-        # Group by Line_Of_Business and sum only selected columns
-        grouped = df_processed.groupby('Line_Of_Business')[original_value_cols].sum().reset_index()
-
-        # Display results in a card
+            # Show rows with missing values
+            with st.expander("View rows with missing values (first 20)"):
+                missing_rows = df[df[all_selected_cols].isna().any(axis=1)]
+                st.dataframe(missing_rows.head(20))
+            
+            st.stop()  # STOP CALCULATION HERE
+            
+        else:
+            st.success("✅ No missing values found in selected columns.")
+        
+        # -----------------------------------------------------------------
+        # 2. DUPLICATE ROWS CHECK (REMOVE AUTOMATICALLY)
+        # -----------------------------------------------------------------
+        st.markdown("#### 2. Duplicate Rows Check")
+        
+        duplicate_rows = df[df.duplicated()]
+        duplicate_count = len(duplicate_rows)
+        
+        if duplicate_count > 0:
+            df = df.drop_duplicates()
+            st.success(f"✅ Removed {duplicate_count} duplicate row(s). {len(df)} rows remaining.")
+        else:
+            st.success("✅ No duplicate rows found.")
+        
+        # -----------------------------------------------------------------
+        # 3. NON-NUMERIC VALUES CHECK (CONVERT AUTOMATICALLY)
+        # -----------------------------------------------------------------
+        st.markdown("#### 3. Non-Numeric Values Check")
+        
+        def clean_numeric(series):
+            """Convert problematic numeric strings to numbers"""
+            if series.dtype == 'object':
+                # Remove currency symbols and commas
+                cleaned = series.astype(str).str.replace(r'[$,€£]', '', regex=True)
+                cleaned = cleaned.str.replace(r',', '', regex=False)
+                # Convert parentheses to negative: (500) -> -500
+                cleaned = cleaned.str.replace(r'^\((.+)\)$', r'-\1', regex=True)
+                cleaned = cleaned.str.strip()
+                cleaned = cleaned.replace('', np.nan)
+                return pd.to_numeric(cleaned, errors='coerce')
+            else:
+                return pd.to_numeric(series, errors='coerce')
+        
+        conversion_issues = []
+        for col in selected_value_cols:
+            if col in df.columns:
+                test_conversion = clean_numeric(df[col])
+                failed_mask = test_conversion.isna() & df[col].notna()
+                failed_count = failed_mask.sum()
+                if failed_count > 0:
+                    problematic_values = df[col][failed_mask].head(3).tolist()
+                    conversion_issues.append(f"Column '{col}': {failed_count} non-numeric values (e.g., {problematic_values})")
+        
+        if conversion_issues:
+            st.info("ℹ️ Converting non-numeric values to numbers:")
+            for issue in conversion_issues:
+                st.write(f"  • {issue}")
+            # Perform conversion
+            for col in selected_value_cols:
+                df[col] = clean_numeric(df[col])
+                df[col] = df[col].fillna(0)
+            st.success("✅ Non-numeric values converted successfully.")
+        else:
+            st.success("✅ All selected numeric columns contain valid numbers.")
+        
+        # -----------------------------------------------------------------
+        # SUMMARY
+        # -----------------------------------------------------------------
+        st.markdown("#### 📋 Data Quality Summary")
+        
+        rows_removed = df_original_len - len(df)
+        if rows_removed > 0 or conversion_issues:
+            st.markdown('<div class="data-check-warning">', unsafe_allow_html=True)
+            st.markdown("**⚠️ Data adjustments applied:**")
+            if rows_removed > 0:
+                st.write(f"• Removed {rows_removed} duplicate row(s)")
+            if conversion_issues:
+                st.write(f"• Converted non-numeric values in {len(conversion_issues)} column(s)")
+            st.markdown('</div>')
+        else:
+            st.markdown('<div class="data-check-container">', unsafe_allow_html=True)
+            st.markdown("**✅ All data quality checks passed!**")
+            st.markdown('</div>')
+        
+        st.markdown("---")
+        
+        # ============================================================
+        # PROCESS DATA
+        # ============================================================
+        
+        # Create processed dataframe with only selected columns
+        df_processed = df[grouping_cols + selected_value_cols].copy()
+        
+        # Ensure numeric columns are properly typed
+        for col in selected_value_cols:
+            df_processed[col] = pd.to_numeric(df_processed[col], errors='coerce').fillna(0)
+        
+        # Group by selected grouping columns and sum numeric columns
+        grouped = df_processed.groupby(grouping_cols)[selected_value_cols].sum().reset_index()
+        
+        # Display results
         st.markdown('<div class="card">', unsafe_allow_html=True)
-        st.subheader("Outstanding Reserve by Line of Business")
+        st.subheader("Outstanding Reserve Results")
+        st.markdown(f"**Grouped by:** {', '.join(grouping_cols)}")
         
         # Format for display (add thousand separators)
         display_result = grouped.copy()
-        for col in display_result.columns:
-            if col != 'Line_Of_Business':
-                display_result[col] = display_result[col].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "N/A")
+        for col in selected_value_cols:
+            display_result[col] = display_result[col].apply(lambda x: f"{x:,.2f}")
         
         st.dataframe(display_result, use_container_width=True)
+        
+        # Show row count summary
+        st.caption(f"Original rows: {df_original_len} | After cleaning: {len(df_processed)} | Grouped results: {len(grouped)}")
         st.markdown('</div>', unsafe_allow_html=True)
-
+        
         # Prepare Excel download
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             grouped.to_excel(writer, index=False, sheet_name='OCR_Results')
         output.seek(0)
-
-        # Build filename with client name
-        safe_client = "".join(c for c in client_name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        if safe_client:
-            file_name = f"{safe_client}_Outstanding_Reserve.xlsx"
-        else:
-            file_name = "Outstanding_Reserve.xlsx"
-
+        
+        # Build filename: ClientName_OriginalFileName_OCR_Results.xlsx
+        safe_client = re.sub(r'[\\/*?:"<>|]', "", client_name).strip()
+        safe_client = safe_client if safe_client else "Client"
+        safe_original = re.sub(r'[\\/*?:"<>|]', "", base_filename).strip()
+        safe_original = safe_original if safe_original else "Data"
+        
+        file_name = f"{safe_client}_{safe_original}_OCR_Results.xlsx"
+        
         st.download_button(
             label="Download Excel Report",
             data=output,
             file_name=file_name,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
-
+        
     except Exception as e:
         st.error(f"An error occurred: {e}")
         st.write("Please check your file format and column selections.")
 
-st.markdown('</div>', unsafe_allow_html=True)  # close main-container
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------- Footer ----------
 st.markdown("""
 <div class="footer">
     <p>© 2026 African Actuarial Consultants. All rights reserved. | <a href="#">Privacy</a> | <a href="#">Terms</a></p>
-    <p style="margin-top: 0.5rem; font-size: 0.9rem;">Powered by Streamlit</p>
+    <p style="margin-top: 0.5rem; font-size: 0.9rem;">Powered by Vanababa</p>
 </div>
 """, unsafe_allow_html=True)
